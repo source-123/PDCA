@@ -1,11 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { Card } from "@/components/Card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/States";
 import { listHistory, HistoryEntry } from "@/services/pdcaService";
@@ -30,7 +24,7 @@ function fmt(iso: string): string {
   const yyyy = d.getFullYear();
   const hh = String(d.getHours()).padStart(2, "0");
   const mn = String(d.getMinutes()).padStart(2, "0");
-  return `${dd}/${mm}/${yyyy} ${hh}:${mn}`;
+  return dd + "/" + mm + "/" + yyyy + " " + hh + ":" + mn;
 }
 
 export default function HistoriqueScreen() {
@@ -42,25 +36,31 @@ export default function HistoriqueScreen() {
   const load = async () => {
     try {
       setError(null);
-      setItems(await listHistory(300));
+      const result = await listHistory(300);
+      setItems(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur");
+      const msg = e instanceof Error ? e.message : "Erreur";
+      setError(msg);
     }
   };
 
   useEffect(() => {
+    let mounted = true;
     (async () => {
       setLoading(true);
       await load();
-      setLoading(false);
+      if (mounted) setLoading(false);
     })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState message={error} />;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Historique</Text>
         <Text style={styles.sub}>{items.length} événement(s)</Text>
@@ -70,7 +70,7 @@ export default function HistoriqueScreen() {
         <EmptyState title="Aucun événement" />
       ) : (
         <FlatList<HistoryEntry>
-          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          contentContainerStyle={styles.listContent}
           data={items}
           keyExtractor={(it: HistoryEntry) => it.id}
           refreshControl={
@@ -84,23 +84,7 @@ export default function HistoriqueScreen() {
             />
           }
           renderItem={({ item }: { item: HistoryEntry }) => (
-            <Card>
-              <Text style={styles.date}>{fmt(item.created_at)}</Text>
-              <Text style={styles.event}>
-                {EVENT_LABELS[item.event_type] ?? item.event_type}
-              </Text>
-              {item.old_value || item.new_value ? (
-                <Text style={styles.change}>
-                  {item.old_value ?? "—"} → {item.new_value ?? "—"}
-                </Text>
-              {item.comment ? (
-                <Text style={styles.comment}>« {item.comment} »</Text>
-              ) : null}
-              ) : null}
-              {item.pdca_reference ? (
-                <Text style={styles.ref}>PDCA {item.pdca_reference}</Text>
-              ) : null}
-            </Card>
+            <HistoryItem item={item} />
           )}
         />
       )}
@@ -108,10 +92,34 @@ export default function HistoriqueScreen() {
   );
 }
 
+function HistoryItem({ item }: { item: HistoryEntry }) {
+  const label = EVENT_LABELS[item.event_type] || item.event_type;
+  const hasChange = Boolean(item.old_value) || Boolean(item.new_value);
+  const comment = (item as HistoryEntry & { comment?: string | null }).comment;
+
+  return (
+    <Card>
+      <Text style={styles.date}>{fmt(item.created_at)}</Text>
+      <Text style={styles.event}>{label}</Text>
+      {hasChange ? (
+        <Text style={styles.change}>
+          {(item.old_value || "—") + " → " + (item.new_value || "—")}
+        </Text>
+      ) : null}
+      {comment ? <Text style={styles.comment}>« {comment} »</Text> : null}
+      {item.pdca_reference ? (
+        <Text style={styles.ref}>PDCA {item.pdca_reference}</Text>
+      ) : null}
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.colors.bg },
   header: { padding: 16, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: "800", color: theme.colors.text },
   sub: { color: theme.colors.textMuted, marginTop: 4 },
+  listContent: { padding: 16, paddingBottom: 40 },
   date: { fontSize: 12, color: theme.colors.textMuted },
   event: {
     fontSize: 15,
@@ -120,6 +128,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   change: { fontSize: 14, color: theme.colors.text, marginTop: 4 },
-  comment: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4, fontStyle: "italic" },
+  comment: {
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    marginTop: 4,
+    fontStyle: "italic",
+  },
   ref: { fontSize: 12, color: theme.colors.primary, marginTop: 6 },
 });

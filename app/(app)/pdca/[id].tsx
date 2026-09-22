@@ -16,7 +16,10 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useUI } from "@/ui/UIProvider";
 import { EditActionModal } from "@/components/EditActionModal";
-import type { PDCAPhase } from "@/types/database";
+import type {
+  PDCAPhase,
+  PDCAActionRow,
+} from "@/types/database";
 import { theme } from "@/theme";
 
 export default function PDCADetail() {

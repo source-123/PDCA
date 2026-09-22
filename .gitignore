@@ -13,3 +13,4 @@ web-build/
 
 expo-env.d.ts
 # @end expo-clisupabase/.temp/
+supabase/.temp/

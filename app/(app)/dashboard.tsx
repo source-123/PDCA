@@ -1,0 +1,84 @@
+import React, { useEffect, useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Link } from "expo-router";
+import { Button } from "@/components/Button";
+import { Card } from "@/components/Card";
+import { EmptyState, ErrorState, LoadingState } from "@/components/States";
+import { listPDCA, PDCAWithActions } from "@/services/pdcaService";
+import { useAuth } from "@/hooks/useAuth";
+import { theme } from "@/theme";
+
+export default function Dashboard() {
+  const { profile, signOut } = useAuth();
+  const [data, setData] = useState<PDCAWithActions[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try { setData(await listPDCA()); }
+      catch (e) { setError(e instanceof Error ? e.message : "Erreur"); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  if (loading) return <LoadingState />;
+  if (error)   return <ErrorState message={error} />;
+
+  const total = data.length;
+  const open = data.filter((p) => p.status === "OPEN").length;
+  const inProgress = data.filter((p) => p.status === "IN_PROGRESS").length;
+  const completed = data.filter((p) => p.status === "COMPLETED").length;
+  const overdue = data.flatMap((p) => p.pdca_actions).filter((a) => a.status === "OVERDUE").length;
+
+  return (
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.hello}>Bonjour {profile?.full_name ?? ""}</Text>
+      <Text style={styles.sub}>Tableau de bord</Text>
+
+      <Card>
+        <Text style={styles.big}>{total}</Text>
+        <Text style={styles.label}>PDCA Total</Text>
+        <View style={styles.grid}>
+          <Stat n={open}       l="Ouverts" />
+          <Stat n={inProgress} l="En cours" />
+          <Stat n={completed}  l="Terminés" />
+          <Stat n={overdue}    l="En retard" danger />
+        </View>
+      </Card>
+
+      <Link href="/(app)/pdca/new" asChild>
+        <Button label="+ Nouveau PDCA" onPress={() => {}} style={{ marginBottom: 12 }} />
+      </Link>
+      <Link href="/(app)/pdca" asChild>
+        <Button label="Voir tous les PDCA" variant="secondary" onPress={() => {}} />
+      </Link>
+
+      <View style={{ height: 24 }} />
+      <Button label="Se déconnecter" variant="danger" onPress={signOut} />
+
+      {total === 0 && <EmptyState title="Aucun PDCA" subtitle="Créez votre premier PDCA." />}
+    </ScrollView>
+  );
+}
+
+function Stat({ n, l, danger }: { n: number; l: string; danger?: boolean }) {
+  return (
+    <View style={styles.stat}>
+      <Text style={[styles.statN, danger && { color: theme.colors.danger }]}>{n}</Text>
+      <Text style={styles.statL}>{l}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { padding: 16, backgroundColor: theme.colors.bg, flexGrow: 1 },
+  hello: { fontSize: 22, fontWeight: "700", color: theme.colors.text },
+  sub: { color: theme.colors.textMuted, marginBottom: 16 },
+  big: { fontSize: 36, fontWeight: "800", color: theme.colors.primary },
+  label: { color: theme.colors.textMuted, marginBottom: 12 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  stat: { minWidth: 100, flex: 1 },
+  statN: { fontSize: 22, fontWeight: "700", color: theme.colors.text },
+  statL: { fontSize: 13, color: theme.colors.textMuted },
+});

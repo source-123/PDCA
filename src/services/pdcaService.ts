@@ -1,0 +1,333 @@
+import { supabase } from "@/lib/supabase";
+import type {
+  PDCARow,
+  PDCAActionRow,
+  PDCAPhase,
+  Priority,
+  ActionStatus,
+} from "@/types/database";
+import { PHASE_TO_PROGRESS } from "@/constants/options";
+
+export interface ActionDraft {
+  action: string;
+  pilot_name: string;
+  opening_date: string; // YYYY-MM-DD
+  due_date: string | null;
+  phase: PDCAPhase;
+  status: ActionStatus;
+}
+
+export interface PDCADraft {
+  subject: string;
+  description: string | null;
+  line: string;
+  line_other: string | null;
+  defect_type: string | null;
+  defect_type_other: string | null;
+  priority: Priority;
+  department: string | null;
+  actions: ActionDraft[];
+}
+
+export type PDCAWithActions = PDCARow & { pdca_actions: PDCAActionRow[] };
+
+function makeReference(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const rand = Math.floor(Math.random() * 9000 + 1000);
+  return `PDCA-${y}${m}-${rand}`;
+}
+
+function groupActions(
+  actions: PDCAActionRow[],
+): Map<string, PDCAActionRow[]> {
+  const byPdca = new Map<string, PDCAActionRow[]>();
+  for (const a of actions) {
+    const arr = byPdca.get(a.pdca_id) ?? [];
+    arr.push(a);
+    byPdca.set(a.pdca_id, arr);
+  }
+  return byPdca;
+}
+
+export async function listPDCA(): Promise<PDCAWithActions[]> {
+  const { data: pdcas, error: e1 } = await supabase
+    .from("pdca")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (e1) throw e1;
+  const parentRows = (pdcas ?? []) as PDCARow[];
+  if (parentRows.length === 0) return [];
+
+  const ids = parentRows.map((p) => p.id);
+  const { data: actions, error: e2 } = await supabase
+    .from("pdca_actions")
+    .select("*")
+    .in("pdca_id", ids);
+  if (e2) throw e2;
+
+  const byPdca = groupActions((actions ?? []) as PDCAActionRow[]);
+  return parentRows.map((p) => ({
+    ...p,
+    pdca_actions: byPdca.get(p.id) ?? [],
+  }));
+}
+
+export async function getPDCA(id: string): Promise<PDCAWithActions | null> {
+  const { data: parent, error: e1 } = await supabase
+    .from("pdca")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (e1) throw e1;
+  if (!parent) return null;
+
+  const { data: actions, error: e2 } = await supabase
+    .from("pdca_actions")
+    .select("*")
+    .eq("pdca_id", id)
+    .order("created_at", { ascending: true });
+  if (e2) throw e2;
+
+  return {
+    ...(parent as PDCARow),
+    pdca_actions: (actions ?? []) as PDCAActionRow[],
+  };
+}
+
+export async function createPDCA(
+  draft: PDCADraft,
+  userId: string,
+): Promise<PDCAWithActions> {
+  const { data: pdca, error } = await supabase
+    .from("pdca")
+    .insert({
+      reference: makeReference(),
+      subject: draft.subject,
+      description: draft.description,
+      line: draft.line,
+      line_other: draft.line_other,
+      defect_type: draft.defect_type,
+      defect_type_other: draft.defect_type_other,
+      priority: draft.priority,
+      department: draft.department,
+      status: "OPEN",
+      created_by: userId,
+    })
+    .select("*")
+    .single();
+  if (error || !pdca) throw error ?? new Error("Insert PDCA failed");
+  const parentRow = pdca as PDCARow;
+
+  const rows = draft.actions.map((a) => ({
+    pdca_id: parentRow.id,
+    action: a.action,
+    pilot_name: a.pilot_name,
+    opening_date: a.opening_date,
+    due_date: a.due_date,
+    phase: a.phase,
+    progress: PHASE_TO_PROGRESS[a.phase],
+    status: a.status,
+  }));
+
+  const { data: actions, error: aerr } = await supabase
+    .from("pdca_actions")
+    .insert(rows)
+    .select("*");
+  if (aerr) throw aerr;
+
+  await supabase.from("pdca_history").insert({
+    pdca_id: parentRow.id,
+    user_id: userId,
+    event_type: "PDCA_CREATED",
+    new_value: parentRow.reference,
+  });
+
+  return {
+    ...parentRow,
+    pdca_actions: (actions ?? []) as PDCAActionRow[],
+  };
+}
+
+export async function updateActionPhase(
+  actionId: string,
+  phase: PDCAPhase,
+  userId: string,
+  previousPhase: PDCAPhase,
+): Promise<void> {
+  const progress = PHASE_TO_PROGRESS[phase];
+  const status: ActionStatus = phase === "A" ? "COMPLETED" : "IN_PROGRESS";
+  const completed_at = phase === "A" ? new Date().toISOString() : null;
+
+  const { error } = await supabase
+    .from("pdca_actions")
+    .update({ phase, progress, status, completed_at })
+    .eq("id", actionId);
+  if (error) throw error;
+
+  await supabase.from("pdca_history").insert({
+    action_id: actionId,
+    user_id: userId,
+    event_type: "PHASE_CHANGED",
+    old_value: previousPhase,
+    new_value: phase,
+  });
+}
+
+export async function cancelPDCA(pdcaId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from("pdca")
+    .update({ status: "CANCELLED" })
+    .eq("id", pdcaId);
+  if (error) throw error;
+  await supabase.from("pdca_history").insert({
+    pdca_id: pdcaId,
+    user_id: userId,
+    event_type: "PDCA_CANCELLED",
+  });
+}
+
+// ============================================================
+// Phase 2 — department, pilot, history, cancelled actions
+// ============================================================
+
+export async function listPDCAByDepartment(
+  department: string,
+): Promise<PDCAWithActions[]> {
+  const { data: pdcas, error: e1 } = await supabase
+    .from("pdca")
+    .select("*")
+    .eq("department", department)
+    .order("created_at", { ascending: false });
+  if (e1) throw e1;
+  const parentRows = (pdcas ?? []) as PDCARow[];
+  if (parentRows.length === 0) return [];
+
+  const ids = parentRows.map((p) => p.id);
+  const { data: actions, error: e2 } = await supabase
+    .from("pdca_actions")
+    .select("*")
+    .in("pdca_id", ids);
+  if (e2) throw e2;
+
+  const byPdca = groupActions((actions ?? []) as PDCAActionRow[]);
+  return parentRows.map((p) => ({
+    ...p,
+    pdca_actions: byPdca.get(p.id) ?? [],
+  }));
+}
+
+export interface PilotSummary {
+  pilot_name: string;
+  total_actions: number;
+  open_actions: number;
+  overdue_actions: number;
+  completed_actions: number;
+  pdca_ids: string[];
+}
+
+export async function listPilotSummaries(): Promise<PilotSummary[]> {
+  const { data, error } = await supabase.from("pdca_actions").select("*");
+  if (error) throw error;
+
+  const map = new Map<string, PilotSummary>();
+  for (const row of (data ?? []) as PDCAActionRow[]) {
+    const key = row.pilot_name || "—";
+    const s =
+      map.get(key) ??
+      ({
+        pilot_name: key,
+        total_actions: 0,
+        open_actions: 0,
+        overdue_actions: 0,
+        completed_actions: 0,
+        pdca_ids: [],
+      } as PilotSummary);
+    s.total_actions += 1;
+    if (row.status === "OPEN" || row.status === "IN_PROGRESS") s.open_actions += 1;
+    if (row.status === "OVERDUE") s.overdue_actions += 1;
+    if (row.status === "COMPLETED") s.completed_actions += 1;
+    if (!s.pdca_ids.includes(row.pdca_id)) s.pdca_ids.push(row.pdca_id);
+    map.set(key, s);
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => b.total_actions - a.total_actions,
+  );
+}
+
+export interface HistoryEntry extends PDCAHistoryRow {
+  pdca_reference: string | null;
+}
+
+export async function listHistory(limit = 200): Promise<HistoryEntry[]> {
+  const { data, error } = await supabase
+    .from("pdca_history")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+
+  const rows = (data ?? []) as PDCAHistoryRow[];
+  const pdcaIds = Array.from(
+    new Set(rows.map((r) => r.pdca_id).filter((x): x is string => !!x)),
+  );
+  let refs = new Map<string, string>();
+  if (pdcaIds.length > 0) {
+    const { data: pdcas, error: e2 } = await supabase
+      .from("pdca")
+      .select("id, reference")
+      .in("id", pdcaIds);
+    if (e2) throw e2;
+    refs = new Map(
+      ((pdcas ?? []) as { id: string; reference: string }[]).map((p) => [
+        p.id,
+        p.reference,
+      ]),
+    );
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    pdca_reference: r.pdca_id ? refs.get(r.pdca_id) ?? null : null,
+  }));
+}
+
+export interface CancelledAction extends PDCAActionRow {
+  pdca_reference: string | null;
+  pdca_subject: string | null;
+}
+
+export async function listCancelledActions(): Promise<CancelledAction[]> {
+  const { data, error } = await supabase
+    .from("pdca_actions")
+    .select("*")
+    .eq("status", "CANCELLED")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+
+  const rows = (data ?? []) as PDCAActionRow[];
+  const pdcaIds = Array.from(new Set(rows.map((r) => r.pdca_id)));
+  let map = new Map<string, { reference: string; subject: string }>();
+  if (pdcaIds.length > 0) {
+    const { data: pdcas, error: e2 } = await supabase
+      .from("pdca")
+      .select("id, reference, subject")
+      .in("id", pdcaIds);
+    if (e2) throw e2;
+    map = new Map(
+      ((pdcas ?? []) as { id: string; reference: string; subject: string }[]).map(
+        (p) => [p.id, { reference: p.reference, subject: p.subject }],
+      ),
+    );
+  }
+
+  return rows.map((r) => {
+    const p = map.get(r.pdca_id);
+    return {
+      ...r,
+      pdca_reference: p?.reference ?? null,
+      pdca_subject: p?.subject ?? null,
+    };
+  });
+}

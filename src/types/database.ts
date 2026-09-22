@@ -1,0 +1,142 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [k: string]: Json }
+  | Json[];
+
+export type PDCAPhase = "P" | "D" | "C" | "A";
+export type Priority = "LOW" | "MEDIUM" | "HIGH";
+export type ActionStatus =
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "OVERDUE";
+export type PDCAStatus = ActionStatus;
+
+// IMPORTANT: use `type`, not `interface`. Interfaces do NOT satisfy
+// Record<string, unknown>, which breaks supabase-js GenericTable constraints.
+export type ProfileRow = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  department: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PDCARow = {
+  id: string;
+  reference: string;
+  subject: string;
+  description: string | null;
+  line: string;
+  line_other: string | null;
+  defect_type: string | null;
+  defect_type_other: string | null;
+  priority: Priority;
+  department: string | null;
+  status: PDCAStatus;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PDCAActionRow = {
+  id: string;
+  pdca_id: string;
+  action: string;
+  pilot_id: string | null;
+  pilot_name: string;
+  opening_date: string;
+  due_date: string | null;
+  phase: PDCAPhase;
+  progress: number;
+  status: ActionStatus;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
+export type PDCAHistoryRow = {
+  id: string;
+  pdca_id: string | null;
+  action_id: string | null;
+  user_id: string | null;
+  event_type: string;
+  old_value: string | null;
+  new_value: string | null;
+  created_at: string;
+};
+
+export type LessonLearnedRow = {
+  id: string;
+  pdca_id: string | null;
+  title: string;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type FactoryTourRow = {
+  id: string;
+  title: string;
+  location: string | null;
+  description: string | null;
+  responsible_id: string | null;
+  tour_date: string | null;
+  status: string;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: ProfileRow;
+        Insert: Partial<ProfileRow>;
+        Update: Partial<ProfileRow>;
+
+      };
+      pdca: {
+        Row: PDCARow;
+        Insert: Partial<PDCARow>;
+        Update: Partial<PDCARow>;
+
+      };
+      pdca_actions: {
+        Row: PDCAActionRow;
+        Insert: Partial<PDCAActionRow>;
+        Update: Partial<PDCAActionRow>;
+
+      };
+      pdca_history: {
+        Row: PDCAHistoryRow;
+        Insert: Partial<PDCAHistoryRow>;
+        Update: Partial<PDCAHistoryRow>;
+
+      };
+      lessons_learned: {
+        Row: LessonLearnedRow;
+        Insert: Partial<LessonLearnedRow>;
+        Update: Partial<LessonLearnedRow>;
+
+      };
+      factory_tours: {
+        Row: FactoryTourRow;
+        Insert: Partial<FactoryTourRow>;
+        Update: Partial<FactoryTourRow>;
+
+      };
+    };
+    Views: { [_ in never]: never };
+    Functions: { [_ in never]: never };
+    Enums: { [_ in never]: never };
+    CompositeTypes: { [_ in never]: never };
+  };
+};

@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "PDCA",
+    "slug": "pdca",
+    "scheme": "pdca",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "ios": { "supportsTablet": true },
+    "android": { "edgeToEdgeEnabled": true },
+    "web": { "bundler": "metro" },
+    "experiments": { "typedRoutes": true }
+  }
+}

@@ -6,10 +6,13 @@ import { Card } from "@/components/Card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/States";
 import { listPDCA, PDCAWithActions } from "@/services/pdcaService";
 import { useAuth } from "@/hooks/useAuth";
+import { registerForPushNotifications, PushStatus } from "@/services/pushService";
 import { theme } from "@/theme";
 
 export default function Dashboard() {
   const { profile, signOut } = useAuth();
+  const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
+  const [checkingPush, setCheckingPush] = useState(false);
   const [data, setData] = useState<PDCAWithActions[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +58,32 @@ export default function Dashboard() {
       </Link>
 
       <View style={{ height: 24 }} />
+      <Button
+        label="🔔 Tester push"
+        variant="secondary"
+        loading={checkingPush}
+        onPress={async () => {
+          if (!profile?.id) return;
+          setCheckingPush(true);
+          const res = await registerForPushNotifications(profile.id);
+          setPushStatus(res);
+          setCheckingPush(false);
+        }}
+      />
+      {pushStatus ? (
+        <View style={{ marginTop: 12, padding: 12, borderRadius: 8, backgroundColor: pushStatus.ok ? "#dcfce7" : "#fee2e2" }}>
+          <Text style={{ fontWeight: "700", color: pushStatus.ok ? "#166534" : "#991b1b" }}>
+            {pushStatus.ok ? "✅ Succès" : "❌ Échec"}
+          </Text>
+          <Text style={{ marginTop: 4, color: "#1f2937" }}>{pushStatus.message}</Text>
+          {pushStatus.token ? (
+            <Text style={{ marginTop: 4, fontSize: 11, color: "#6b7280" }} selectable>
+              Token: {pushStatus.token.slice(0, 40)}...
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      <View style={{ height: 12 }} />
       <Button label="Se déconnecter" variant="danger" onPress={signOut} />
 
       {total === 0 && <EmptyState title="Aucun PDCA" subtitle="Créez votre premier PDCA." />}

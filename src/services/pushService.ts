@@ -4,7 +4,6 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { supabase } from "@/lib/supabase";
 
-// Foreground notification handler (native only).
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -17,60 +16,64 @@ if (Platform.OS !== "web") {
   });
 }
 
-export async function registerForPushNotifications(userId: string): Promise<void> {
-  // Web push needs a service worker + VAPID setup, out of scope for this phase.
-  if (Platform.OS === "web") return;
+export interface PushStatus {
+  ok: boolean;
+  message: string;
+  token?: string;
+}
 
-  // Simulators/emulators cannot receive push from Expo.
-  if (!Device.isDevice) {
-    console.log("[push] skipped: not a physical device");
-    return;
-  }
+export async function registerForPushNotifications(userId: string): Promise<PushStatus> {
+  try {
+    if (Platform.OS === "web") {
+      return { ok: false, message: "Web: push non supporté" };
+    }
+    if (!Device.isDevice) {
+      return { ok: false, message: "Émulateur: push non supporté (utilise un vrai téléphone)" };
+    }
 
-  // Android needs a notification channel before requesting permission.
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-  }
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "default",
+        importance: Notifications.AndroidImportance.DEFAULT,
+      });
+    }
 
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  let status = existing;
-  if (existing !== "granted") {
-    const req = await Notifications.requestPermissionsAsync();
-    status = req.status;
-  }
-  if (status !== "granted") {
-    console.log("[push] permission denied");
-    return;
-  }
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let status = existing;
+    if (existing !== "granted") {
+      const req = await Notifications.requestPermissionsAsync();
+      status = req.status;
+    }
+    if (status !== "granted") {
+      return { ok: false, message: `Permission refusée (status=${status})` };
+    }
 
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ??
-    (Constants as unknown as { easConfig?: { projectId?: string } }).easConfig?.projectId;
-  if (!projectId) {
-    console.warn("[push] missing EAS projectId — see README");
-    return;
-  }
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      (Constants as unknown as { easConfig?: { projectId?: string } }).easConfig?.projectId;
+    if (!projectId) {
+      return { ok: false, message: "projectId EAS manquant dans app.json" };
+    }
 
-  const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    const resp = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token = resp.data;
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({ expo_push_token: token })
-    .eq("id", userId);
-  if (error) {
-    console.warn("[push] failed to save token:", error.message);
-  } else {
-    console.log("[push] token registered");
+    const { error } = await supabase
+      .from("profiles")
+      .update({ expo_push_token: token })
+      .eq("id", userId);
+    if (error) {
+      return { ok: false, message: `Supabase update: ${error.message}`, token };
+    }
+
+    return { ok: true, message: "Token enregistré", token };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : JSON.stringify(e);
+    return { ok: false, message: `Exception: ${msg}` };
   }
 }
 
 export async function unregisterPushToken(userId: string): Promise<void> {
   if (Platform.OS === "web") return;
-  await supabase
-    .from("profiles")
-    .update({ expo_push_token: null })
-    .eq("id", userId);
+  await supabase.from("profiles").update({ expo_push_token: null }).eq("id", userId);
 }

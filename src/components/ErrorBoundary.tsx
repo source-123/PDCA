@@ -1,0 +1,63 @@
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { Button } from "@/components/Button";
+import { theme } from "@/theme";
+
+interface Props {
+  children: React.ReactNode;
+}
+interface State {
+  error: Error | null;
+}
+
+export class ErrorBoundary extends React.Component<Props, State> {
+  state: State = { error: null };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // eslint-disable-next-line no-console
+    console.error("ErrorBoundary caught:", error, info.componentStack);
+  }
+
+  reset = () => this.setState({ error: null });
+
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={styles.wrap}>
+          <Text style={styles.title}>Une erreur est survenue</Text>
+          <Text style={styles.message}>{this.state.error.message}</Text>
+          <View style={{ height: 16 }} />
+          <Button label="Réessayer" onPress={this.reset} />
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+    backgroundColor: theme.colors.bg,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: theme.colors.danger,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  message: {
+    fontSize: 14,
+    color: theme.colors.text,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+});

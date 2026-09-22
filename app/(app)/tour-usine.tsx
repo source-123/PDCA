@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -24,6 +23,7 @@ import {
   listTours,
 } from "@/services/tourService";
 import { useAuth } from "@/hooks/useAuth";
+import { useUI } from "@/ui/UIProvider";
 import { theme } from "@/theme";
 
 const STATUSES = ["PLANNED", "IN_PROGRESS", "DONE", "CANCELLED"];
@@ -36,6 +36,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function TourUsineScreen() {
   const { session } = useAuth();
+  const { alert, toast } = useUI();
   const [items, setItems] = useState<FactoryTour[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -74,7 +75,7 @@ export default function TourUsineScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
       <FilterBar
-        filters={filters}
+        value={filters}
         onChange={setFilters}
         showPriority={false}
         showStatus={false}
@@ -120,7 +121,7 @@ export default function TourUsineScreen() {
                       await deleteTour(item.id);
                       await load();
                     } catch (e) {
-                      Alert.alert("Erreur", e instanceof Error ? e.message : "Erreur");
+                      alert({ title: "Erreur", message: e instanceof Error ? e.message : "Erreur" });
                     }
                   }}
                 />
@@ -140,7 +141,7 @@ export default function TourUsineScreen() {
             setShowForm(false);
             await load();
           } catch (e) {
-            Alert.alert("Erreur", e instanceof Error ? e.message : "Erreur");
+            alert({ title: "Erreur", message: e instanceof Error ? e.message : "Erreur" });
           }
         }}
       />
@@ -174,7 +175,7 @@ function TourForm({
 
   const submit = async () => {
     if (!title.trim()) {
-      Alert.alert("Validation", "Titre obligatoire.");
+      alert({ title: "Validation", message: "Titre obligatoire." });
       return;
     }
     setBusy(true);

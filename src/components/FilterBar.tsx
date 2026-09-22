@@ -43,16 +43,19 @@ const PRIORITY_LABELS: Record<PriorityFilter, string> = {
 interface Props {
   value: FilterState;
   onChange: (next: FilterState) => void;
+  showPriority?: boolean;
+  showStatus?: boolean;
+  placeholder?: string;
 }
 
-export function FilterBar({ value, onChange }: Props) {
-  const statuses: StatusFilter[] = [
-    "ALL",
-    "OPEN",
-    "IN_PROGRESS",
-    "COMPLETED",
-    "OVERDUE",
-  ];
+export function FilterBar({
+  value,
+  onChange,
+  showPriority = true,
+  showStatus = true,
+  placeholder = "Rechercher (référence, sujet…)",
+}: Props) {
+  const statuses: StatusFilter[] = ["ALL", "OPEN", "IN_PROGRESS", "COMPLETED", "OVERDUE"];
   const priorities: PriorityFilter[] = ["ALL", "LOW", "MEDIUM", "HIGH"];
 
   return (
@@ -60,59 +63,66 @@ export function FilterBar({ value, onChange }: Props) {
       <TextInput
         value={value.search}
         onChangeText={(t) => onChange({ ...value, search: t })}
-        placeholder="Rechercher (référence, sujet…)"
+        placeholder={placeholder}
         placeholderTextColor={theme.colors.textMuted}
         style={styles.search}
       />
 
-      <Text style={styles.rowLabel}>Statut</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {statuses.map((s) => {
-          const active = value.status === s;
-          return (
-            <Pressable
-              key={s}
-              onPress={() => onChange({ ...value, status: s })}
-              style={[styles.chip, active && styles.chipActive]}
-            >
-              <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>
-                {STATUS_LABELS[s]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      {showStatus ? (
+        <>
+          <Text style={styles.rowLabel}>Statut</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            {statuses.map((s) => {
+              const active = value.status === s;
+              return (
+                <Pressable
+                  key={s}
+                  onPress={() => onChange({ ...value, status: s })}
+                  style={[styles.chip, active && styles.chipActive]}
+                >
+                  <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>
+                    {STATUS_LABELS[s]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </>
+      ) : null}
 
-      <Text style={styles.rowLabel}>Priorité</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {priorities.map((p) => {
-          const active = value.priority === p;
-          return (
-            <Pressable
-              key={p}
-              onPress={() => onChange({ ...value, priority: p })}
-              style={[styles.chip, active && styles.chipActive]}
-            >
-              <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>
-                {PRIORITY_LABELS[p]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      {showPriority ? (
+        <>
+          <Text style={styles.rowLabel}>Priorité</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            {priorities.map((p) => {
+              const active = value.priority === p;
+              return (
+                <Pressable
+                  key={p}
+                  onPress={() => onChange({ ...value, priority: p })}
+                  style={[styles.chip, active && styles.chipActive]}
+                >
+                  <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>
+                    {PRIORITY_LABELS[p]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </>
+      ) : null}
     </View>
   );
 }
 
-export function applyFilters(
-  items: {
+export function applyFilters<
+  T extends {
     reference: string;
     subject: string;
     status: string;
     priority: string;
-  }[],
-  f: FilterState,
-): typeof items {
+  },
+>(items: T[], f: FilterState): T[] {
   const q = f.search.trim().toLowerCase();
   return items.filter((it) => {
     if (f.status !== "ALL" && it.status !== f.status) return false;

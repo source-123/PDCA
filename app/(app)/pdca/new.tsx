@@ -1,5 +1,12 @@
 import React, { useMemo, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { router } from "expo-router";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
@@ -9,13 +16,26 @@ import { Card } from "@/components/Card";
 import { ActionCard } from "@/components/ActionCard";
 import { PDCAProgressBar } from "@/components/PDCAProgressBar";
 import { useAuth } from "@/hooks/useAuth";
-import { createPDCA, ActionDraft, PDCADraft } from "@/services/pdcaService";
-import { DEFECT_TYPES, DEPARTMENTS, LINES, PILOTS, PRIORITIES } from "@/constants/options";
+import { useUI } from "@/ui/UIProvider";
+import {
+  createPDCA,
+  ActionDraft,
+  PDCADraft,
+} from "@/services/pdcaService";
+import {
+  DEFECT_TYPES,
+  DEPARTMENTS,
+  LINES,
+  PILOTS,
+  PRIORITIES,
+  PHASE_TO_PROGRESS,
+} from "@/constants/options";
 import type { PDCAPhase, Priority, PDCAActionRow } from "@/types/database";
-import { PHASE_TO_PROGRESS } from "@/constants/options";
 import { theme } from "@/theme";
 
-interface ActionForm extends ActionDraft { tempId: string; }
+interface ActionForm extends ActionDraft {
+  tempId: string;
+}
 
 const emptyAction = (): ActionForm => ({
   tempId: Math.random().toString(36).slice(2),
@@ -29,6 +49,7 @@ const emptyAction = (): ActionForm => ({
 
 export default function NewPDCA() {
   const { session } = useAuth();
+  const { alert, toast } = useUI();
 
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
@@ -51,9 +72,18 @@ export default function NewPDCA() {
     PRIORITIES.find((p) => p.label === l)?.value ?? "MEDIUM";
 
   const resetAll = () => {
-    setSubject(""); setDescription(""); setLine(null); setLineOther("");
-    setDefectType(null); setDefectOther(""); setPriority("MEDIUM");
-    setDepartment(null); setPilotOther(""); setActions([]); setEditing(null); setErrors({});
+    setSubject("");
+    setDescription("");
+    setLine(null);
+    setLineOther("");
+    setDefectType(null);
+    setDefectOther("");
+    setPriority("MEDIUM");
+    setDepartment(null);
+    setPilotOther("");
+    setActions([]);
+    setEditing(null);
+    setErrors({});
   };
 
   const upsertAction = () => {
@@ -61,14 +91,17 @@ export default function NewPDCA() {
     const e: Record<string, string> = {};
     if (!editing.action.trim()) e.action = "Action requise.";
     if (!editing.pilot_name.trim()) e.pilot_name = "Pilote requis.";
-    if (editing.due_date && editing.due_date < editing.opening_date) e.due_date = "Échéance < date d'ouverture.";
+    if (editing.due_date && editing.due_date < editing.opening_date)
+      e.due_date = "Échéance < date d'ouverture.";
     setErrors(e);
     if (Object.keys(e).length) return;
 
     setActions((prev) => {
       const idx = prev.findIndex((a) => a.tempId === editing.tempId);
       if (idx >= 0) {
-        const copy = [...prev]; copy[idx] = editing; return copy;
+        const copy = [...prev];
+        copy[idx] = editing;
+        return copy;
       }
       return [...prev, editing];
     });
@@ -77,17 +110,23 @@ export default function NewPDCA() {
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
-    if (!subject.trim())  e.subject = "Sujet requis.";
-    if (!line)            e.line = "Ligne requise.";
+    if (!subject.trim()) e.subject = "Sujet requis.";
+    if (!line) e.line = "Ligne requise.";
     if (line === "Autre" && !lineOther.trim()) e.lineOther = "Précisez la ligne.";
-    if (!actions.length)  e.actions = "Ajoutez au moins une action.";
+    if (!actions.length) e.actions = "Ajoutez au moins une action.";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const onSubmit = async () => {
-    if (!validate()) { Alert.alert("Validation", "Veuillez corriger les erreurs."); return; }
-    if (!session?.user) { Alert.alert("Session expirée", "Veuillez vous reconnecter."); return; }
+    if (!validate()) {
+      alert({ title: "Validation", message: "Veuillez corriger les erreurs." });
+      return;
+    }
+    if (!session?.user) {
+      alert({ title: "Session expirée", message: "Veuillez vous reconnecter." });
+      return;
+    }
 
     const draft: PDCADraft = {
       subject: subject.trim(),
@@ -104,50 +143,99 @@ export default function NewPDCA() {
     try {
       setSubmitting(true);
       const created = await createPDCA(draft, session.user.id);
-      Alert.alert("Succès", `PDCA ${created.reference} créé.`);
+      toast.success(`PDCA ${created.reference} créé`);
       router.replace(`/(app)/pdca/${created.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
-      Alert.alert("Erreur", msg);
+      alert({ title: "Erreur", message: msg });
     } finally {
       setSubmitting(false);
     }
   };
 
   const actionsForDisplay: PDCAActionRow[] = actions.map((a) => ({
-    id: a.tempId, pdca_id: "", action: a.action, pilot_id: null, pilot_name: a.pilot_name,
-    opening_date: a.opening_date, due_date: a.due_date, phase: a.phase,
-    progress: PHASE_TO_PROGRESS[a.phase], status: a.status,
-    created_at: "", updated_at: "", completed_at: null,
+    id: a.tempId,
+    pdca_id: "",
+    action: a.action,
+    pilot_id: null,
+    pilot_name: a.pilot_name,
+    opening_date: a.opening_date,
+    due_date: a.due_date,
+    phase: a.phase,
+    progress: PHASE_TO_PROGRESS[a.phase],
+    status: a.status,
+    created_at: "",
+    updated_at: "",
+    completed_at: null,
   }));
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>Nouveau PDCA</Text>
 
         <Card>
-          <Input label="Sujet / Non-conformité" value={subject} onChangeText={setSubject} required error={errors.subject} />
-          <Input label="Description de l'écart" value={description} onChangeText={setDescription} multiline />
-
-          <Select label="Ligne / Poste" value={line} options={LINES} onChange={setLine} required error={errors.line} />
+          <Input
+            label="Sujet / Non-conformité"
+            value={subject}
+            onChangeText={setSubject}
+            required
+            error={errors.subject}
+          />
+          <Input
+            label="Description de l'écart"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+          />
+          <Select
+            label="Ligne / Poste"
+            value={line}
+            options={LINES}
+            onChange={setLine}
+            required
+            error={errors.line}
+          />
           {line === "Autre" && (
-            <Input label="Précisez la ligne" value={lineOther} onChangeText={setLineOther} required error={errors.lineOther} />
+            <Input
+              label="Précisez la ligne"
+              value={lineOther}
+              onChangeText={setLineOther}
+              required
+              error={errors.lineOther}
+            />
           )}
-
-          <Select label="Type de défaut" value={defectType} options={DEFECT_TYPES} onChange={setDefectType} />
+          <Select
+            label="Type de défaut"
+            value={defectType}
+            options={DEFECT_TYPES}
+            onChange={setDefectType}
+          />
           {defectType === "Autre" && (
-            <Input label="Précisez le type" value={defectOther} onChangeText={setDefectOther} />
+            <Input
+              label="Précisez le type"
+              value={defectOther}
+              onChangeText={setDefectOther}
+            />
           )}
-
           <Select
             label="Priorité"
             value={PRIORITIES.find((p) => p.value === priority)?.label ?? "Moyenne"}
             options={priorityLabels}
             onChange={(l) => setPriority(priorityFromLabel(l))}
           />
-
-          <Select label="Département" value={department} options={DEPARTMENTS} onChange={setDepartment} />
+          <Select
+            label="Département"
+            value={department}
+            options={DEPARTMENTS}
+            onChange={setDepartment}
+          />
         </Card>
 
         <Text style={styles.section}>Actions</Text>
@@ -180,32 +268,51 @@ export default function NewPDCA() {
         {editing && (
           <Card>
             <Text style={styles.cardTitle}>
-              {actions.find((a) => a.tempId === editing.tempId) ? "Modifier l'action" : "Nouvelle action"}
+              {actions.find((a) => a.tempId === editing.tempId)
+                ? "Modifier l'action"
+                : "Nouvelle action"}
             </Text>
 
             <Input
-              label="Action" value={editing.action} required error={errors.action}
-              onChangeText={(t) => setEditing({ ...editing, action: t })} multiline
+              label="Action"
+              value={editing.action}
+              required
+              error={errors.action}
+              onChangeText={(t) => setEditing({ ...editing, action: t })}
+              multiline
             />
 
             <Select
-              label="Pilote" value={editing.pilot_name} options={PILOTS} required error={errors.pilot_name}
+              label="Pilote"
+              value={editing.pilot_name}
+              options={PILOTS}
+              required
+              error={errors.pilot_name}
               onChange={(v) => setEditing({ ...editing, pilot_name: v })}
             />
             {editing.pilot_name === "Autre" && (
               <Input
-                label="Précisez le pilote" value={pilotOther} onChangeText={(t) => {
-                  setPilotOther(t); setEditing({ ...editing, pilot_name: t || "Autre" });
+                label="Précisez le pilote"
+                value={pilotOther}
+                onChangeText={(t) => {
+                  setPilotOther(t);
+                  setEditing({ ...editing, pilot_name: t || "Autre" });
                 }}
               />
             )}
 
             <DateField
-              label="Date ouverture" value={editing.opening_date} required
-              onChange={(v) => setEditing({ ...editing, opening_date: v ?? todayISO() })}
+              label="Date ouverture"
+              value={editing.opening_date}
+              required
+              onChange={(v) =>
+                setEditing({ ...editing, opening_date: v ?? todayISO() })
+              }
             />
             <DateField
-              label="Date de fin" value={editing.due_date} error={errors.due_date}
+              label="Date de fin"
+              value={editing.due_date}
+              error={errors.due_date}
               onChange={(v) => setEditing({ ...editing, due_date: v })}
             />
 
@@ -216,8 +323,17 @@ export default function NewPDCA() {
             />
 
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-              <Button label="Annuler" variant="secondary" onPress={() => setEditing(null)} style={{ flex: 1 }} />
-              <Button label="Valider l'action" onPress={upsertAction} style={{ flex: 1 }} />
+              <Button
+                label="Annuler"
+                variant="secondary"
+                onPress={() => setEditing(null)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                label="Valider l'action"
+                onPress={upsertAction}
+                style={{ flex: 1 }}
+              />
             </View>
           </Card>
         )}
@@ -232,10 +348,34 @@ export default function NewPDCA() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, backgroundColor: theme.colors.bg, paddingBottom: 40 },
-  title: { fontSize: 22, fontWeight: "800", color: theme.colors.text, marginBottom: 12 },
-  section: { fontSize: 16, fontWeight: "700", marginVertical: 8, color: theme.colors.text },
-  cardTitle: { fontSize: 15, fontWeight: "700", marginBottom: 8, color: theme.colors.text },
+  container: {
+    padding: 16,
+    backgroundColor: theme.colors.bg,
+    paddingBottom: 40,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: theme.colors.text,
+    marginBottom: 12,
+  },
+  section: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginVertical: 8,
+    color: theme.colors.text,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 8,
+    color: theme.colors.text,
+  },
   err: { color: theme.colors.danger, marginBottom: 8 },
-  label: { fontSize: 14, fontWeight: "600", color: theme.colors.text, marginBottom: 4 },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: theme.colors.text,
+    marginBottom: 4,
+  },
 });

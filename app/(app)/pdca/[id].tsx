@@ -1,42 +1,86 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Card } from "@/components/Card";
 import { ActionCard } from "@/components/ActionCard";
 import { PriorityBadge, StatusBadge } from "@/components/Badges";
 import { Button } from "@/components/Button";
 import { ErrorState, LoadingState } from "@/components/States";
-import { getPDCA, updateActionPhase, cancelPDCA, PDCAWithActions } from "@/services/pdcaService";
+import {
+  getPDCA,
+  updateActionPhase,
+  cancelPDCA,
+  PDCAWithActions,
+} from "@/services/pdcaService";
 import { useAuth } from "@/hooks/useAuth";
+import { useUI } from "@/ui/UIProvider";
 import type { PDCAPhase } from "@/types/database";
 import { theme } from "@/theme";
 
 export default function PDCADetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
+  const { alert, confirm, toast } = useUI();
   const [item, setItem] = useState<PDCAWithActions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
-    try { setError(null); setItem(await getPDCA(id)); }
-    catch (e) { setError(e instanceof Error ? e.message : "Erreur"); }
+    try {
+      setError(null);
+      setItem(await getPDCA(id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur");
+    }
   }, [id]);
 
-  useEffect(() => { (async () => { setLoading(true); await load(); setLoading(false); })(); }, [load]);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      await load();
+      setLoading(false);
+    })();
+  }, [load]);
 
   if (loading) return <LoadingState />;
-  if (error)   return <ErrorState message={error} />;
-  if (!item)   return <ErrorState message="PDCA introuvable." />;
+  if (error) return <ErrorState message={error} />;
+  if (!item) return <ErrorState message="PDCA introuvable." />;
 
-  const changePhase = async (actionId: string, prev: PDCAPhase, next: PDCAPhase) => {
+  const changePhase = async (
+    actionId: string,
+    prev: PDCAPhase,
+    next: PDCAPhase,
+  ) => {
     if (!session?.user) return;
     try {
       await updateActionPhase(actionId, next, session.user.id, prev);
       await load();
     } catch (e) {
-      Alert.alert("Erreur", e instanceof Error ? e.message : "Erreur inconnue");
+      alert({
+        title: "Erreur",
+        message: e instanceof Error ? e.message : "Erreur inconnue",
+      });
+    }
+  };
+
+  const onCancel = async () => {
+    const ok = await confirm({
+      title: "Annuler ce PDCA ?",
+      message: "Le PDCA sera marqué comme annulé. Réversible côté base.",
+      confirmLabel: "Annuler le PDCA",
+      destructive: true,
+    });
+    if (!ok || !session?.user) return;
+    try {
+      await cancelPDCA(item.id, session.user.id);
+      toast.info("PDCA annulé");
+      await load();
+    } catch (e) {
+      alert({
+        title: "Erreur",
+        message: e instanceof Error ? e.message : "Erreur",
+      });
     }
   };
 
@@ -67,24 +111,39 @@ export default function PDCADetail() {
         />
       ))}
 
-      <Button
-        label="Annuler ce PDCA"
-        variant="danger"
-        onPress={async () => {
-          if (!session?.user) return;
-          try { await cancelPDCA(item.id, session.user.id); await load(); }
-          catch (e) { Alert.alert("Erreur", e instanceof Error ? e.message : "Erreur"); }
-        }}
-      />
+      {item.status !== "CANCELLED" ? (
+        <Button label="Annuler ce PDCA" variant="danger" onPress={onCancel} />
+      ) : (
+        <Text style={styles.cancelled}>Ce PDCA est annulé.</Text>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, backgroundColor: theme.colors.bg, paddingBottom: 40 },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  container: {
+    padding: 16,
+    backgroundColor: theme.colors.bg,
+    paddingBottom: 40,
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   ref: { fontWeight: "700", color: theme.colors.primary },
   subject: { fontSize: 17, fontWeight: "600", marginTop: 8, color: theme.colors.text },
   meta: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4 },
-  section: { fontSize: 16, fontWeight: "700", marginVertical: 8, color: theme.colors.text },
+  section: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginVertical: 8,
+    color: theme.colors.text,
+  },
+  cancelled: {
+    marginTop: 12,
+    textAlign: "center",
+    color: theme.colors.textMuted,
+    fontWeight: "700",
+  },
 });

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -25,10 +24,12 @@ import {
 } from "@/services/lessonsService";
 import { listPDCA, PDCAWithActions } from "@/services/pdcaService";
 import { useAuth } from "@/hooks/useAuth";
+import { useUI } from "@/ui/UIProvider";
 import { theme } from "@/theme";
 
 export default function LessonsLearnedScreen() {
   const { session } = useAuth();
+  const { alert, toast } = useUI();
   const [items, setItems] = useState<LessonLearned[]>([]);
   const [pdcas, setPdcas] = useState<PDCAWithActions[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +71,7 @@ export default function LessonsLearnedScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
       <FilterBar
-        filters={filters}
+        value={filters}
         onChange={setFilters}
         showPriority={false}
         showStatus={false}
@@ -146,7 +147,7 @@ export default function LessonsLearnedScreen() {
                         await deleteLesson(item.id);
                         await load();
                       } catch (e) {
-                        Alert.alert("Erreur", e instanceof Error ? e.message : "Erreur");
+                        alert({ title: "Erreur", message: e instanceof Error ? e.message : "Erreur" });
                       }
                     }}
                   />
@@ -168,7 +169,7 @@ export default function LessonsLearnedScreen() {
             setShowForm(false);
             await load();
           } catch (e) {
-            Alert.alert("Erreur", e instanceof Error ? e.message : "Erreur");
+            alert({ title: "Erreur", message: e instanceof Error ? e.message : "Erreur" });
           }
         }}
       />
@@ -210,7 +211,7 @@ function LessonForm({
 
   const submit = async () => {
     if (!title.trim()) {
-      Alert.alert("Validation", "Titre obligatoire.");
+      alert({ title: "Validation", message: "Titre obligatoire." });
       return;
     }
     setBusy(true);

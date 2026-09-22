@@ -5,6 +5,7 @@ import type {
   PDCAPhase,
   Priority,
   ActionStatus,
+  PDCAHistoryRow,
 } from "@/types/database";
 import { PHASE_TO_PROGRESS } from "@/constants/options";
 

@@ -286,6 +286,7 @@ export async function listPilotSummaries(): Promise<PilotSummary[]> {
 }
 
 export interface HistoryEntry extends PDCAHistoryRow {
+  comment?: string | null;
   pdca_reference: string | null;
 }
 
@@ -359,4 +360,75 @@ export async function listCancelledActions(): Promise<CancelledAction[]> {
       pdca_subject: p?.subject ?? null,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5.2 — Edit action (pilot / due date) with mandatory comment
+// ---------------------------------------------------------------------------
+
+export interface ActionEditInput {
+  pilot_name: string;
+  due_date: string | null;
+}
+
+export async function updateActionWithComment(
+  actionId: string,
+  next: ActionEditInput,
+  previous: ActionEditInput,
+  comment: string,
+  userId: string,
+): Promise<void> {
+  const trimmed = comment.trim();
+  if (!trimmed) {
+    throw new Error("Un commentaire est requis pour justifier la modification.");
+  }
+
+  const pilotChanged = next.pilot_name !== previous.pilot_name;
+  const dateChanged = next.due_date !== previous.due_date;
+
+  if (!pilotChanged && !dateChanged) {
+    throw new Error("Aucune modification à enregistrer.");
+  }
+
+  const { error } = await supabase
+    .from("pdca_actions")
+    .update({
+      pilot_name: next.pilot_name,
+      due_date: next.due_date,
+    })
+    .eq("id", actionId);
+  if (error) throw error;
+
+  const events: Array<{
+    action_id: string;
+    user_id: string;
+    event_type: string;
+    old_value: string | null;
+    new_value: string | null;
+    comment: string;
+  }> = [];
+
+  if (pilotChanged) {
+    events.push({
+      action_id: actionId,
+      user_id: userId,
+      event_type: "PILOT_CHANGED",
+      old_value: previous.pilot_name,
+      new_value: next.pilot_name,
+      comment: trimmed,
+    });
+  }
+  if (dateChanged) {
+    events.push({
+      action_id: actionId,
+      user_id: userId,
+      event_type: "DUE_DATE_CHANGED",
+      old_value: previous.due_date,
+      new_value: next.due_date,
+      comment: trimmed,
+    });
+  }
+
+  const { error: e2 } = await supabase.from("pdca_history").insert(events);
+  if (e2) throw e2;
 }

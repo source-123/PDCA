@@ -62,6 +62,10 @@ export function DrawerContent(props: DrawerContentComponentProps) {
               <Pressable
                 key={item.href}
                 onPress={() => {
+                  // Blur any focused element to prevent aria-hidden warnings on web
+                  if (typeof document !== "undefined" && document.activeElement) {
+                    (document.activeElement as HTMLElement).blur();
+                  }
                   props.navigation.closeDrawer();
                   // @ts-expect-error expo-router accepts string paths at runtime
                   router.push(item.href);

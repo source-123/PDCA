@@ -93,6 +93,9 @@ export default function HistoriqueScreen() {
                 <Text style={styles.change}>
                   {item.old_value ?? "—"} → {item.new_value ?? "—"}
                 </Text>
+              {item.comment ? (
+                <Text style={styles.comment}>« {item.comment} »</Text>
+              ) : null}
               ) : null}
               {item.pdca_reference ? (
                 <Text style={styles.ref}>PDCA {item.pdca_reference}</Text>
@@ -117,5 +120,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   change: { fontSize: 14, color: theme.colors.text, marginTop: 4 },
+  comment: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4, fontStyle: "italic" },
   ref: { fontSize: 12, color: theme.colors.primary, marginTop: 6 },
 });

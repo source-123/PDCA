@@ -9,11 +9,13 @@ import { ErrorState, LoadingState } from "@/components/States";
 import {
   getPDCA,
   updateActionPhase,
+  updateActionWithComment,
   cancelPDCA,
   PDCAWithActions,
 } from "@/services/pdcaService";
 import { useAuth } from "@/hooks/useAuth";
 import { useUI } from "@/ui/UIProvider";
+import { EditActionModal } from "@/components/EditActionModal";
 import type { PDCAPhase } from "@/types/database";
 import { theme } from "@/theme";
 
@@ -24,6 +26,7 @@ export default function PDCADetail() {
   const [item, setItem] = useState<PDCAWithActions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingAction, setEditingAction] = useState<PDCAActionRow | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -108,6 +111,7 @@ export default function PDCADetail() {
           action={a}
           priority={item.priority}
           onPhaseChange={(next) => changePhase(a.id, a.phase, next)}
+          onEdit={() => setEditingAction(a)}
         />
       ))}
 
@@ -116,6 +120,24 @@ export default function PDCADetail() {
       ) : (
         <Text style={styles.cancelled}>Ce PDCA est annulé.</Text>
       )}
+      <EditActionModal
+        visible={!!editingAction}
+        action={editingAction}
+        onCancel={() => setEditingAction(null)}
+        onSave={async (next, comment) => {
+          if (!editingAction || !session?.user) return;
+          await updateActionWithComment(
+            editingAction.id,
+            next,
+            { pilot_name: editingAction.pilot_name, due_date: editingAction.due_date },
+            comment,
+            session.user.id,
+          );
+          setEditingAction(null);
+          toast.success("Action mise à jour");
+          await load();
+        }}
+      />
     </ScrollView>
   );
 }

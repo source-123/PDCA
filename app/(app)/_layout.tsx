@@ -20,6 +20,10 @@ export default function AppLayout() {
         headerStyle: { backgroundColor: theme.colors.primary },
         headerTintColor: "#fff",
         headerTitleStyle: { fontWeight: "700" },
+        drawerType: "front",
+        overlayColor: "transparent",
+        swipeEdgeWidth: 60,
+        swipeMinDistance: 40,
       }}
     >
       <Drawer.Screen name="dashboard" options={{ title: "Tableau de bord" }} />

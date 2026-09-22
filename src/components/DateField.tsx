@@ -5,7 +5,7 @@ import { theme } from "@/theme";
 
 interface Props {
   label: string;
-  value: string | null;
+  value: string | null; // YYYY-MM-DD
   onChange: (v: string | null) => void;
   required?: boolean;
   error?: string | null;
@@ -27,10 +27,46 @@ function fromISO(s: string | null): Date {
   return new Date(y, m - 1, d);
 }
 
-export function todayISO(): string { return toISO(new Date()); }
+export function todayISO(): string {
+  return toISO(new Date());
+}
 
 export function DateField({ label, value, onChange, required, error }: Props) {
   const [show, setShow] = useState(false);
+
+  // ---------- Web ----------
+  if (Platform.OS === "web") {
+    return (
+      <View style={styles.wrap}>
+        <Text style={styles.label}>
+          {label}{required ? <Text style={{ color: theme.colors.danger }}> *</Text> : null}
+        </Text>
+        <input
+          type="date"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value || null)}
+          style={{
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: error ? theme.colors.danger : theme.colors.border,
+            borderRadius: theme.radius.md,
+            paddingLeft: 12,
+            paddingRight: 12,
+            minHeight: 48,
+            fontSize: 15,
+            color: theme.colors.text,
+            backgroundColor: theme.colors.surface,
+            fontFamily: "inherit",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        />
+        {error ? <Text style={styles.err}>{error}</Text> : null}
+      </View>
+    );
+  }
+
+  // ---------- Native ----------
   const display = value ? fromISO(value).toLocaleDateString("fr-FR") : "Sélectionner…";
 
   return (
@@ -42,7 +78,9 @@ export function DateField({ label, value, onChange, required, error }: Props) {
         onPress={() => setShow(true)}
         style={[styles.field, error ? styles.fieldError : undefined]}
       >
-        <Text style={{ color: value ? theme.colors.text : theme.colors.textMuted, fontSize: 16 }}>{display}</Text>
+        <Text style={{ color: value ? theme.colors.text : theme.colors.textMuted, fontSize: 16 }}>
+          {display}
+        </Text>
       </Pressable>
       {error ? <Text style={styles.err}>{error}</Text> : null}
 
@@ -70,9 +108,13 @@ const styles = StyleSheet.create({
   wrap: { marginBottom: theme.spacing(1.5) },
   label: { fontSize: 14, fontWeight: "600", color: theme.colors.text, marginBottom: 6 },
   field: {
-    borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.md,
-    paddingHorizontal: 12, justifyContent: "center",
-    backgroundColor: theme.colors.surface, minHeight: 48,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+    backgroundColor: theme.colors.surface,
+    minHeight: 48,
   },
   fieldError: { borderColor: theme.colors.danger },
   err: { color: theme.colors.danger, fontSize: 12, marginTop: 4 },

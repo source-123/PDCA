@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
 import { Select } from "@/components/Select";
@@ -19,6 +20,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUI } from "@/ui/UIProvider";
 import {
   createPDCA,
+  errorMessage,
   ActionDraft,
   PDCADraft,
 } from "@/services/pdcaService";
@@ -61,11 +63,35 @@ export default function NewPDCA() {
   const [department, setDepartment] = useState<string | null>(null);
 
   const [pilotOther, setPilotOther] = useState("");
+  const [pilotIsOther, setPilotIsOther] = useState(false);
   const [actions, setActions] = useState<ActionForm[]>([]);
   const [editing, setEditing] = useState<ActionForm | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Reset all fields every time the screen gains focus,
+  // so users always start with a blank template.
+  useFocusEffect(
+    React.useCallback(() => {
+      setSubject("");
+      setDescription("");
+      setLine(null);
+      setLineOther("");
+      setDefectType(null);
+      setDefectOther("");
+      setPriority("MEDIUM");
+      setDepartment(null);
+      setPilotOther("");
+    setPilotIsOther(false);
+      setActions([]);
+      setEditing(null);
+      setErrors({});
+      setSubmitting(false);
+      return undefined;
+    }, []),
+  );
+
 
   const priorityLabels = useMemo(() => PRIORITIES.map((p) => p.label), []);
   const priorityFromLabel = (l: string): Priority =>
@@ -81,6 +107,7 @@ export default function NewPDCA() {
     setPriority("MEDIUM");
     setDepartment(null);
     setPilotOther("");
+    setPilotIsOther(false);
     setActions([]);
     setEditing(null);
     setErrors({});
@@ -144,9 +171,19 @@ export default function NewPDCA() {
       setSubmitting(true);
       const created = await createPDCA(draft, session.user.id);
       toast.success(`PDCA ${created.reference} créé`);
-      router.replace(`/(app)/pdca/${created.id}`);
+      // Si un département a été choisi, on va sur sa page ; sinon on va au détail du PDCA
+      if (draft.department) {
+        router.replace(`/(app)/department/${draft.department}`);
+      } else {
+        // Si un département a été choisi, on va sur sa page ; sinon on va au détail du PDCA
+      if (draft.department) {
+        router.replace(`/(app)/department/${draft.department}`);
+      } else {
+        router.replace(`/(app)/pdca/${created.id}`);
+      }
+      }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      const msg = errorMessage(err);
       alert({ title: "Erreur", message: msg });
     } finally {
       setSubmitting(false);
@@ -284,20 +321,33 @@ export default function NewPDCA() {
 
             <Select
               label="Pilote"
-              value={editing.pilot_name}
+              value={pilotIsOther ? "Autre" : editing.pilot_name}
               options={PILOTS}
               required
               error={errors.pilot_name}
-              onChange={(v) => setEditing({ ...editing, pilot_name: v })}
+              onChange={(v) => {
+                const isOther = v === "Autre";
+                setPilotIsOther(isOther);
+                if (!isOther) {
+                  setPilotOther("");
+                  setEditing({ ...editing, pilot_name: v });
+                } else {
+                  setEditing({ ...editing, pilot_name: "Autre" });
+                }
+              }}
             />
-            {editing.pilot_name === "Autre" && (
+            {pilotIsOther && (
               <Input
                 label="Précisez le pilote"
                 value={pilotOther}
-                onChangeText={(t) => {
-                  setPilotOther(t);
-                  setEditing({ ...editing, pilot_name: t || "Autre" });
+                onChangeText={(text) => {
+                  setPilotOther(text);
+                  setEditing({
+                    ...editing,
+                    pilot_name: text.trim() || "Autre",
+                  });
                 }}
+                required
               />
             )}
 

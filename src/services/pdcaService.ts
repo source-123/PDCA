@@ -9,6 +9,20 @@ import type {
 } from "@/types/database";
 import { PHASE_TO_PROGRESS } from "@/constants/options";
 
+export function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object" && "message" in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "Erreur inconnue";
+  }
+}
+
 export interface ActionDraft {
   action: string;
   pilot_name: string;
@@ -36,8 +50,10 @@ function makeReference(): string {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
-  const rand = Math.floor(Math.random() * 9000 + 1000);
-  return `PDCA-${y}${m}-${rand}`;
+  // Timestamp en base 36 (7 chars) + suffixe aléatoire (3 chars) — collision quasi impossible
+  const ts = Date.now().toString(36).slice(-7).toUpperCase();
+  const rnd = Math.random().toString(36).slice(2, 5).toUpperCase();
+  return `PDCA-${y}${m}-${ts}${rnd}`;
 }
 
 function groupActions(
@@ -97,13 +113,28 @@ export async function getPDCA(id: string): Promise<PDCAWithActions | null> {
   };
 }
 
+
+// Insert PDCA avec retry sur collision de référence (409)
+async function insertPDCAWithRetry(payload: Record<string, unknown>, attempts = 3) {
+  for (let i = 0; i < attempts; i += 1) {
+    const ref = i === 0 ? (payload.reference as string) : makeReference();
+    const { data, error } = await supabase
+      .from("pdca")
+      .insert({ ...payload, reference: ref })
+      .select("*")
+      .single();
+    if (!error) return data;
+    const isConflict = (error as { code?: string }).code === "23505" || /duplicate key/i.test(error.message ?? "");
+    if (!isConflict || i === attempts - 1) throw error;
+  }
+  throw new Error("Impossible de générer une référence unique");
+}
+
 export async function createPDCA(
   draft: PDCADraft,
   userId: string,
 ): Promise<PDCAWithActions> {
-  const { data: pdca, error } = await supabase
-    .from("pdca")
-    .insert({
+  const pdca = await insertPDCAWithRetry({
       reference: makeReference(),
       subject: draft.subject,
       description: draft.description,
@@ -115,11 +146,8 @@ export async function createPDCA(
       department: draft.department,
       status: "OPEN",
       created_by: userId,
-    })
-    .select("*")
-    .single();
-  if (error || !pdca) throw error ?? new Error("Insert PDCA failed");
-  const parentRow = pdca as PDCARow;
+    });
+    const parentRow = pdca as PDCARow;
 
   const rows = draft.actions.map((a) => ({
     pdca_id: parentRow.id,

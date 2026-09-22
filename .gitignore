@@ -14,3 +14,5 @@ web-build/
 expo-env.d.ts
 # @end expo-clisupabase/.temp/
 supabase/.temp/
+firebase-key.json
+*firebase-adminsdk*.json

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "41700416738",
+    "project_id": "pdcaapp-c80b5",
+    "storage_bucket": "pdcaapp-c80b5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:41700416738:android:c8fa6a3aa716ad51fd12bb",
+        "android_client_info": {
+          "package_name": "com.pdca.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAALDbatfIfLUAghU2wQJRToN6_y904RVc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

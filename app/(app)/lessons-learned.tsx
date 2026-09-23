@@ -23,6 +23,7 @@ import {
   listLessons,
 } from "@/services/lessonsService";
 import { listPDCA, PDCAWithActions } from "@/services/pdcaService";
+import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useUI } from "@/ui/UIProvider";
 import { theme } from "@/theme";
@@ -37,6 +38,11 @@ export default function LessonsLearnedScreen() {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [showForm, setShowForm] = useState(false);
+  const { pdcaId } = useLocalSearchParams<{ pdcaId?: string }>();
+
+  useEffect(() => {
+    if (pdcaId) setShowForm(true);
+  }, [pdcaId]);
 
   const load = async () => {
     try {

@@ -1,25 +1,25 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Card } from "@/components/Card";
 import { ActionCard } from "@/components/ActionCard";
 import { PriorityBadge, StatusBadge } from "@/components/Badges";
 import { Button } from "@/components/Button";
 import { ErrorState, LoadingState } from "@/components/States";
+import { EditActionModal } from "@/components/EditActionModal";
+import { PhaseCompleteModal } from "@/components/PhaseCompleteModal";
+import { CancelActionModal } from "@/components/CancelActionModal";
 import {
   getPDCA,
-  updateActionPhase,
-  updateActionWithComment,
   cancelPDCA,
+  updateActionWithComment,
+  cancelActionWithComment,
+  applyPhaseChange,
   PDCAWithActions,
 } from "@/services/pdcaService";
 import { useAuth } from "@/hooks/useAuth";
 import { useUI } from "@/ui/UIProvider";
-import { EditActionModal } from "@/components/EditActionModal";
-import type {
-  PDCAPhase,
-  PDCAActionRow,
-} from "@/types/database";
+import type { PDCAPhase, PDCAActionRow } from "@/types/database";
 import { theme } from "@/theme";
 
 export default function PDCADetail() {
@@ -29,7 +29,10 @@ export default function PDCADetail() {
   const [item, setItem] = useState<PDCAWithActions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [editingAction, setEditingAction] = useState<PDCAActionRow | null>(null);
+  const [completingAction, setCompletingAction] = useState<PDCAActionRow | null>(null);
+  const [cancellingAction, setCancellingAction] = useState<PDCAActionRow | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -53,21 +56,54 @@ export default function PDCADetail() {
   if (error) return <ErrorState message={error} />;
   if (!item) return <ErrorState message="PDCA introuvable." />;
 
-  const changePhase = async (
-    actionId: string,
-    prev: PDCAPhase,
-    next: PDCAPhase,
-  ) => {
-    if (!session?.user) return;
-    try {
-      await updateActionPhase(actionId, next, session.user.id, prev);
-      await load();
-    } catch (e) {
-      alert({
-        title: "Erreur",
-        message: e instanceof Error ? e.message : "Erreur inconnue",
-      });
+  const handlePhaseChange = (action: PDCAActionRow, next: PDCAPhase) => {
+    if (next === "A") {
+      setCompletingAction(action);
+      return;
     }
+    if (next === action.phase) return;
+    // Simple phase change (P → D, D → C)
+    if (!session?.user) return;
+    applyPhaseChange({
+      actionId: action.id,
+      phase: next,
+      previousPhase: action.phase,
+      userId: session.user.id,
+    })
+      .then(() => load())
+      .catch((e) =>
+        alert({ title: "Erreur", message: e instanceof Error ? e.message : "Erreur" }),
+      );
+  };
+
+  const handleJustClose = async (comment: string) => {
+    if (!completingAction || !session?.user) return;
+    await applyPhaseChange({
+      actionId: completingAction.id,
+      phase: "A",
+      previousPhase: completingAction.phase,
+      userId: session.user.id,
+      comment,
+    });
+    setCompletingAction(null);
+    toast.success("Action clôturée");
+    await load();
+  };
+
+  const handleCloseWithLesson = async (comment: string) => {
+    if (!completingAction || !session?.user) return;
+    await applyPhaseChange({
+      actionId: completingAction.id,
+      phase: "A",
+      previousPhase: completingAction.phase,
+      userId: session.user.id,
+      comment,
+    });
+    const pdcaId = item.id;
+    setCompletingAction(null);
+    toast.success("Action clôturée — redirection vers Leçons apprises");
+    await load();
+    router.push(`/(app)/lessons-learned?pdcaId=${pdcaId}`);
   };
 
   const onCancel = async () => {
@@ -83,10 +119,7 @@ export default function PDCADetail() {
       toast.info("PDCA annulé");
       await load();
     } catch (e) {
-      alert({
-        title: "Erreur",
-        message: e instanceof Error ? e.message : "Erreur",
-      });
+      alert({ title: "Erreur", message: e instanceof Error ? e.message : "Erreur" });
     }
   };
 
@@ -108,21 +141,38 @@ export default function PDCADetail() {
 
       <Text style={styles.section}>Actions ({item.pdca_actions.length})</Text>
       {item.pdca_actions.map((a, i) => (
-        <ActionCard
-          key={a.id}
-          index={i}
-          action={a}
-          priority={item.priority}
-          onPhaseChange={(next) => changePhase(a.id, a.phase, next)}
-          onEdit={() => setEditingAction(a)}
-        />
+        <View key={a.id}>
+          <ActionCard
+            index={i}
+            action={a}
+            priority={item.priority}
+            onPhaseChange={(next) => handlePhaseChange(a, next)}
+            onEdit={() => setEditingAction(a)}
+          />
+          <View style={styles.actionButtons}>
+            {a.status !== "CANCELLED" && a.status !== "COMPLETED" ? (
+              <Button
+                label="Annuler l'action"
+                variant="secondary"
+                onPress={() => setCancellingAction(a)}
+              />
+            ) : (
+              <Text style={styles.statusLabel}>
+                {a.status === "COMPLETED" ? "✓ Terminée" : "⊘ Annulée"}
+              </Text>
+            )}
+          </View>
+        </View>
       ))}
 
       {item.status !== "CANCELLED" ? (
-        <Button label="Annuler ce PDCA" variant="danger" onPress={onCancel} />
+        <View style={{ marginTop: 12 }}>
+          <Button label="Annuler ce PDCA" variant="danger" onPress={onCancel} />
+        </View>
       ) : (
         <Text style={styles.cancelled}>Ce PDCA est annulé.</Text>
       )}
+
       <EditActionModal
         visible={!!editingAction}
         action={editingAction}
@@ -132,7 +182,10 @@ export default function PDCADetail() {
           await updateActionWithComment(
             editingAction.id,
             next,
-            { pilot_name: editingAction.pilot_name, due_date: editingAction.due_date },
+            {
+              pilot_name: editingAction.pilot_name,
+              due_date: editingAction.due_date,
+            },
             comment,
             session.user.id,
           );
@@ -141,34 +194,39 @@ export default function PDCADetail() {
           await load();
         }}
       />
+
+      <PhaseCompleteModal
+        visible={!!completingAction}
+        actionLabel={completingAction?.action ?? ""}
+        onCancel={() => setCompletingAction(null)}
+        onJustClose={handleJustClose}
+        onCloseWithLesson={handleCloseWithLesson}
+      />
+
+      <CancelActionModal
+        visible={!!cancellingAction}
+        actionLabel={cancellingAction?.action ?? ""}
+        onCancel={() => setCancellingAction(null)}
+        onConfirm={async (comment) => {
+          if (!cancellingAction || !session?.user) return;
+          await cancelActionWithComment(cancellingAction.id, comment, session.user.id);
+          setCancellingAction(null);
+          toast.info("Action annulée");
+          await load();
+        }}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    backgroundColor: theme.colors.bg,
-    paddingBottom: 40,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  container: { padding: 16, backgroundColor: theme.colors.bg, paddingBottom: 60 },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   ref: { fontWeight: "700", color: theme.colors.primary },
   subject: { fontSize: 17, fontWeight: "600", marginTop: 8, color: theme.colors.text },
   meta: { fontSize: 12, color: theme.colors.textMuted, marginTop: 4 },
-  section: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginVertical: 8,
-    color: theme.colors.text,
-  },
-  cancelled: {
-    marginTop: 12,
-    textAlign: "center",
-    color: theme.colors.textMuted,
-    fontWeight: "700",
-  },
+  section: { fontSize: 16, fontWeight: "700", marginVertical: 8, color: theme.colors.text },
+  actionButtons: { marginTop: -4, marginBottom: 12, paddingHorizontal: 4 },
+  statusLabel: { textAlign: "center", color: theme.colors.textMuted, fontWeight: "700" },
+  cancelled: { marginTop: 12, textAlign: "center", color: theme.colors.textMuted, fontWeight: "700" },
 });

@@ -432,3 +432,65 @@ export async function updateActionWithComment(
   const { error: e2 } = await supabase.from("pdca_history").insert(events);
   if (e2) throw e2;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 6 — Cancel action + Complete with lesson learned
+// ---------------------------------------------------------------------------
+
+export async function cancelActionWithComment(
+  actionId: string,
+  comment: string,
+  userId: string,
+): Promise<void> {
+  const trimmed = comment.trim();
+  if (!trimmed) throw new Error("Une raison d'annulation est requise.");
+
+  const { error } = await supabase
+    .from("pdca_actions")
+    .update({ status: "CANCELLED" })
+    .eq("id", actionId);
+  if (error) throw error;
+
+  const { error: e2 } = await supabase.from("pdca_history").insert({
+    action_id: actionId,
+    user_id: userId,
+    event_type: "ACTION_CANCELLED",
+    old_value: "ACTIVE",
+    new_value: "CANCELLED",
+    comment: trimmed,
+  });
+  if (e2) throw e2;
+}
+
+export interface PhaseChangeOptions {
+  actionId: string;
+  phase: PDCAPhase;
+  previousPhase: PDCAPhase;
+  userId: string;
+  comment?: string;
+  completeStatus?: ActionStatus;
+}
+
+export async function applyPhaseChange(opts: PhaseChangeOptions): Promise<void> {
+  const progress = PHASE_TO_PROGRESS[opts.phase];
+  const isComplete = opts.phase === "A";
+  const status: ActionStatus = isComplete
+    ? (opts.completeStatus ?? "COMPLETED")
+    : "IN_PROGRESS";
+  const completed_at = isComplete ? new Date().toISOString() : null;
+
+  const { error } = await supabase
+    .from("pdca_actions")
+    .update({ phase: opts.phase, progress, status, completed_at })
+    .eq("id", opts.actionId);
+  if (error) throw error;
+
+  await supabase.from("pdca_history").insert({
+    action_id: opts.actionId,
+    user_id: opts.userId,
+    event_type: isComplete ? "ACTION_COMPLETED" : "PHASE_CHANGED",
+    old_value: opts.previousPhase,
+    new_value: opts.phase,
+    comment: opts.comment ?? null,
+  });
+}
